@@ -1,13 +1,16 @@
+from uuid import uuid4
 
 import psycopg
 from dotenv import load_dotenv
 from langchain.agents import create_agent
 from langchain_community.agent_toolkits import SQLDatabaseToolkit
 from langchain_community.utilities import SQLDatabase
+from langchain_core.messages import SystemMessage, HumanMessage
 from langchain_openai import ChatOpenAI
 from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.checkpoint.postgres import PostgresSaver
 from sqlalchemy import create_engine
+from sqlalchemy.ext.asyncio import AsyncSession
 
 load_dotenv()
 
@@ -58,6 +61,44 @@ sql_agent = create_agent(
     system_prompt=system_prompt,
     checkpointer=checkpointer
 )
+
+async def approve_and_execute(approval_id:str,approve:bool,session:AsyncSession):
+
+
+
+async def propose_insert(query:str, session:AsyncSession):
+    schema_info = db.get_table_info()
+    prompt=f"""
+    You are a SQL assistant, Generate exactly one SQL INSERT Statement
+    for {db.dialect}. Use the provided schema and do NOT output anything
+    except the SQL statement. Do not wrap it in code fences.\n\n
+    
+    Schema:\n
+    {schema_info}\n
+    User Request:
+    {query}
+    """
+
+    response = model.invoke([
+        SystemMessage(content="You only return a single SQL statement."),
+        HumanMessage(content=prompt)
+    ])
+
+    sql = response.content if hasattr(response,"content") else str(response)
+
+    approval_id = str(uuid4())
+
+    pending_request = PendingDeprecationWarning(
+        id=approval_id,
+        query=query,
+        sql=sql,
+        status="pending"
+    )
+
+    session.add(pending_request)
+    await session.commit()
+    return {"approval_id": approval_id, "sql":sql}
+
 
 
 def query_db_with_natural_language (query: str, thread_id: str = "1"):

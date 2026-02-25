@@ -1,8 +1,12 @@
 from fastapi import APIRouter
+from fastapi.params import Depends
+from sqlalchemy.ext.asyncio import AsyncSession
 from starlette import status
 from starlette.exceptions import HTTPException
 
-from db_agent import query_db_with_natural_language
+from api_models import InsertProposalRequest, InsertProposalResponse
+from database_config import get_db
+from db_agent import query_db_with_natural_language, propose_insert
 from models import QueryRequest, QueryResponse
 
 router = APIRouter(prefix="/agent", tags=["DB Agent"])
@@ -20,3 +24,19 @@ def query_db(request:QueryRequest) -> QueryResponse:
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=str(e)
         )
+@router.post("/insert/propose",response_model=InsertProposalResponse)
+async def propose_insert_request(
+        request:InsertProposalRequest,
+        session: AsyncSession = Depends(get_db)
+
+):
+    try:
+        proposal = await propose_insert(request.query, session=session)
+        return InsertProposalResponse(
+            approval_id=proposal
+        ["approval_id"],
+            sql=proposal["sql"],
+            status="pending"
+        )
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
