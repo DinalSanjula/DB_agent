@@ -12,6 +12,8 @@ from langgraph.checkpoint.postgres import PostgresSaver
 from sqlalchemy import create_engine
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from models import PendingInsertRequest
+
 load_dotenv()
 
 DB_URL="postgresql://postgres:admin@localhost:5432/keells"
@@ -63,6 +65,24 @@ sql_agent = create_agent(
 )
 
 async def approve_and_execute(approval_id:str,approve:bool,session:AsyncSession):
+    pending_request = await session.get(PendingInsertRequest,approval_id)
+
+    if not pending_request:
+        raise ValueError("Approval ID does not exists")
+
+    if not approve:
+        pending_request.status = "rejected"
+        await session.commit()
+        return "Rejected"
+
+    sql = pending_request.sql
+
+    result = db.run(sql)
+
+    pending_request.status = "approved"
+    await session.commit()
+    return str(result)
+
 
 
 
@@ -88,7 +108,7 @@ async def propose_insert(query:str, session:AsyncSession):
 
     approval_id = str(uuid4())
 
-    pending_request = PendingDeprecationWarning(
+    pending_request = PendingInsertRequest(
         id=approval_id,
         query=query,
         sql=sql,
